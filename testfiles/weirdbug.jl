@@ -21,6 +21,9 @@ struct Config
     clients::Dict{String,String}
 end
 
+lock = SpinLock()
+condvar = Condition(lock)
+
 
 function coroutine(ws, state::State, config::Config)
     try
@@ -88,7 +91,7 @@ function coroutine(ws, state::State, config::Config)
                 end
             end
             localK = state.k
-            stillOpen = writeguarded(ws, "Iteration $localK")
+            stillOpen = writeguarded(ws, "Iteration $state.k")
             if !stillOpen
                 @info "Connection closed by peer"
                 break
@@ -147,10 +150,9 @@ function startController(config::Config, state::State)
         if nConnected == N_CLIENTS
             @info "All clients connected"
             state.k = 1
-            nWoken = nothing
             lock(state.nextIteration) do
                 @info "Notifying clients"
-                nWoken = notify(state.nextIteration)
+                notify(state.nextIteration)
             end
             @info "Woke up $nWoken clients"
         end
