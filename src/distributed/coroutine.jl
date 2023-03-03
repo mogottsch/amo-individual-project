@@ -1,20 +1,22 @@
 import WebSockets
+import JSON
 
 include("logger.jl")
 include("controller.jl")
-
 include("config.jl")
+include("utils.jl")
+include("ws.jl")
 
-function coroutineWrapper(ws::WebSockets.WebSocket, state::State, config::Config)
+function coroutineWrapper(ws::WebSockets.WebSocket, state::State, config::Config, data::Data)
     try
-        coroutine(ws, state, config)
+        coroutine(ws, state, config, data)
     catch e
         @error "Something went wrong" exception = (e, catch_backtrace()) # captures full stacktrace
         error(e)
     end
 end
 
-function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
+function coroutine(ws::WebSockets.WebSocket, state::State, config::Config, data::Data)
     logger = createLogger("COROUTINE")
     @info log(logger, "Starting coroutine")
 
@@ -22,7 +24,7 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
     localK = 0
 
     while isopen(ws)
-        data, stillopen = readWs(ws, logger)
+        message, stillopen = readWs(ws, logger)
         if !stillopen
             break
         end
@@ -30,19 +32,15 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
 
         ## registration in iteration 0
         if id === nothing
-            id, msg = initClient(data, state, config, logger)
+            id, answer = initClient(message, state, data, logger)
 
-            stillopen = writeguarded(ws, msg)
-            if !stillopen
-                @info log(logger, "Connection closed by peer")
-                break
-            end
+            stillopen = writeWs(ws, answer, logger)
 
             if id === nothing
                 continue
             end
 
-            logger = createLogger("COROUTINE - $id")
+            logger = createLogger("COROUTINE-$id")
         end
 
         ## end of registration
@@ -50,13 +48,11 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
 
         ## actions in iteration k
         if state.k > 0
-            value = nothing
             try
-                value = parse(Float64, data)
-                reportClientUpdate(state.mainChannel, id, value)
-            catch
-                @info log(logger, "Could not parse value")
-
+                clientUpdate = parseClientUpdate(message, id)
+                reportClientUpdate(state.mainChannel, clientUpdate)
+            catch e
+                @warn log(logger, "Could not parse value") exception = (e, catch_backtrace())
                 stillopen = writeWs(ws, "Could not parse value", logger)
                 if !stillopen
                     break
@@ -68,12 +64,15 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
         ## end of actions
 
 
-        newMean = nothing
+        δs = Dict{Symbol,Float64}()
+        λ_δs = Dict{Symbol,Float64}()
         ## wait for next iteration
         lock(state.nextIteration) do
             while state.k == localK
-                newMean = wait(state.nextIteration)
+                δs, λ_δs = wait(state.nextIteration)
                 @info log(logger, "Woke up")
+                δs = getRelevantδs(δs, data.busses, id)
+                λ_δs = getRelevantλ_δs(λ_δs, id)
             end
         end
         ## end of wait
@@ -81,9 +80,13 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
         localK = state.k
 
         ## answer to client
-        stillOpen = writeWs(ws, "mean:$newMean", logger)
+        answer = Dict(
+            "k" => localK,
+            "deltas" => δs,
+            "lambda_deltas" => λ_δs,
+        )
+        stillOpen = writeWs(ws, JSON.json(answer), logger)
         if !stillOpen
-            @info log(logger, "Connection closed by peer")
             break
         end
         ## end of answer
@@ -91,24 +94,53 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config)
     @info log(logger, "Coroutine finished")
 end
 
+function getRelevantδs(
+    δs::Dict{Symbol,Float64},
+    busses::Dict{Symbol,Bus},
+    id::String,
+)::Dict{Symbol,Float64}
+    isBus = checkIsBus(id)
 
+    if !isBus
+        return Dict(
+            Symbol(id) => δs[Symbol(id)]
+        )
+    end
+    bus = busses[Symbol(id)]
 
-function initClient(data::String, state::State, config::Config, logger::LoggerConfig)::Tuple{String,String}
-    foundId, found = get_id(data)
+    lines = union(bus.incoming, bus.outgoing)
+    @assert length(lines) > 0
+
+    relevantδs = Dict{Symbol,Float64}()
+    for line in lines
+        relevantδs[line] = δs[line]
+    end
+    @assert length(relevantδs) == length(lines)
+    return relevantδs
+end
+
+function getRelevantλ_δs(λ_δs::Dict{Symbol,Dict{Symbol,Float64}}, id::String)::Dict{Symbol,Float64}
+    return λ_δs[Symbol(id)]
+end
+
+function initClient(message::String, state::State, data::Data, logger::LoggerConfig)
+    foundId, found = get_id(message)
     if !found
-        @info log(logger, "No id found")
-        return nothing, "No id found"
+        m = "No id found: '$message'"
+        @warn log(logger, m)
+        return nothing, m
     end
 
-    if !(foundId in keys(config.clients))
-        @info log(logger, "No client found")
-        return nothing, "No client found"
+    if !(foundId in data.clients)
+        m = "No client found: '$foundId'"
+        @warn log(logger, m)
+        return nothing, m
     end
 
 
     lock(state.mutex)
     if foundId in state.connected
-        @info log(logger, "Client already connected")
+        @warn log(logger, "Client already connected")
         unlock(state.mutex)
         return nothing, "Client already connected"
     end
@@ -116,12 +148,28 @@ function initClient(data::String, state::State, config::Config, logger::LoggerCo
     push!(state.connected, id)
     unlock(state.mutex)
 
-    reportClientUpdate(state.mainChannel, id, 0.0)
-    return id, "Connected"
+    reportClientUpdate(state.mainChannel, createEmptyClientUpdate(id))
+
+    isBus = checkIsBus(id)
+    object = isBus ? data.busses[Symbol(id)] : data.lines[Symbol(id)]
+
+    answer = JSON.json(toJSON(object))
+    return id, answer
 end
 
+function parseClientUpdate(message::String, id::String)::ClientUpdate
+    clientUpdateDict = JSON.parse(message)
+    δs = clientUpdateDict["deltas"]
+    δs = Dict{Symbol,Float64}(Symbol(k) => v for (k, v) in δs)
+    objective = clientUpdateDict["objective"]
+    P = get(clientUpdateDict, "P", nothing)
+    type = P === nothing ? :line : :bus
+    return ClientUpdate(id, type, δs, P, objective)
+end
 
-
+function createEmptyClientUpdate(id::String)::ClientUpdate
+    return ClientUpdate(id, :unknown, Dict{Symbol,Float64}(), nothing, 0.0)
+end
 
 # expect "id:<id>"
 function get_id(data::String)
@@ -131,28 +179,6 @@ function get_id(data::String)
     return nothing, false
 end
 
-
-
-
-function readWs(ws::WebSockets.WebSocket, logger::LoggerConfig)::Tuple{String,Bool}
-    data, stillopen = readguarded(ws)
-    if !stillopen
-        @info log(logger, "Connection closed by peer")
-        return "", false
-    end
-    return String(data), true
-end
-
-function writeWs(ws::WebSockets.WebSocket, data::String, logger::LoggerConfig)::Bool
-    stillopen = writeguarded(ws, data)
-    if !stillopen
-        @info log(logger, "Connection closed by peer")
-        return false
-    end
-    return true
-end
-
-
-function reportClientUpdate(channel::Channel{ClientUpdate}, id::String, value::Float64)
-    put!(channel, ClientUpdate(id, value))
+function reportClientUpdate(channel::Channel{ClientUpdate}, clientUpdate::ClientUpdate)
+    put!(channel, clientUpdate)
 end

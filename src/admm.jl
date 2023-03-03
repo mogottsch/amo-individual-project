@@ -31,7 +31,7 @@ function solve_with_admm(busses::Dict{Symbol,Bus}, lines::Dict{Symbol,Line}, con
     ϵ = 0.0001
     Ps = Dict()
 
-    δs, λ_δs = init(busses, lines)
+    δs, λ_δs = initVars(busses, lines)
     has_converged = false
     objective = Inf
 
@@ -147,7 +147,7 @@ function solve_line_problem(
     )
 end
 
-function init(
+function initVars(
     busses::Dict{Symbol,Bus},
     lines::Dict{Symbol,Line}
 )::Tuple{Dict{Symbol,Float64},Dict{Symbol,Dict{Symbol,Float64}}}
