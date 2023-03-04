@@ -17,7 +17,8 @@ function startFor(file::String)
     schedule(serverTask)
 
     @info "Handing over to watchdog"
-    watchdog(serverTask, controllerTask, closeServer)
+    result = watchdog(serverTask, controllerTask, closeServer)
+    return result
 end
 
 function setup(file::String)::Tuple{Config,State,Data}
@@ -72,67 +73,11 @@ function watchdog(serverTask::Task, controllerTask::Task, closeServer::Function)
         end
 
         if istaskdone(controllerTask)
+            result = fetch(controllerTask)
             @info "Controller finished - stopping server"
             closeServer()
-            exit(0)
+            return result
         end
         sleep(1)
     end
 end
-
-
-# ### SIMPLE 
-# busses = Dict(
-#     :B1 => Dict(
-#         :cost => 12,
-#         :P_min => 0,
-#         :P_max => 250,
-#         :load => 160,
-#         :incoming => [:L3],
-#         :outgoing => [:L1],
-#     ),
-#     :B2 => Dict(
-#         :cost => 20,
-#         :P_min => 0,
-#         :P_max => 300,
-#         :load => 100,
-#         :incoming => [:L1],
-#         :outgoing => [:L2],
-#     ),
-#     :B3 => Dict(
-#         :cost => 17,
-#         :P_min => 0,
-#         :P_max => 350,
-#         :load => 50,
-#         :incoming => [:L2],
-#         :outgoing => [:L3],
-#     ),
-# )
-#
-# lines = Dict(
-#     :L1 => Dict(
-#         :from => :B1,
-#         :to => :B2,
-#         :capacity => 100,
-#     ),
-#     :L2 => Dict(
-#         :from => :B2,
-#         :to => :B3,
-#         :capacity => 100,
-#     ),
-#     :L3 => Dict(
-#         :from => :B3,
-#         :to => :B1,
-#         :capacity => 100,
-#     ),
-# )
-# parsed_busses = Dict{Symbol,Bus}()
-# for (id, bus) in busses
-#     parsed_busses[id] = Bus(id, bus[:cost], bus[:P_min], bus[:P_max], bus[:load], Set(bus[:incoming]), Set(bus[:outgoing]))
-# end
-#
-# parsed_lines = Dict{Symbol,Line}()
-# for (id, line) in lines
-#     parsed_lines[id] = Line(id, line[:from], line[:to], line[:capacity])
-# end
-# ### END SIMPLE

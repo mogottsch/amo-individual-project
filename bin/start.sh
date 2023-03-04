@@ -5,7 +5,7 @@ if [ -z "$DATA_FILE" ]; then
     echo "No data file provided"
     exit 1
 fi
-IDS_OUTPUT=$(julia ./src/get_ids.jl ./data/ieee14cdf.txt)
+IDS_OUTPUT=$(julia ./src/get_ids.jl $DATA_FILE)
 
 # output looks like
 
@@ -20,11 +20,13 @@ IDS_OUTPUT=$(julia ./src/get_ids.jl ./data/ieee14cdf.txt)
 IDS=$(echo "$IDS_OUTPUT" | sed -n '/BEGIN IDS/,/END IDS/p' | sed '1d;$d')
 
 
+i=0
 for id in $IDS; do
     echo "Starting $id"
-    zsh -c "sleep 1 && julia ./src/distributed/client.jl $id" > /dev/null 2>&1 &
+    zsh -c "sleep $i && julia ./client_main.jl $id" > /dev/null 2>&1 &
+    ((i++))
     # alacritty -e zsh -c "julia ./src/distributed/client.jl $id" &
 done
 
 # start main julia script
-julia ./src/distributed/main.jl
+julia ./server_main.jl $DATA_FILE

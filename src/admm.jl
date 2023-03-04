@@ -37,7 +37,7 @@ function solve_with_admm(busses::Dict{Symbol,Bus}, lines::Dict{Symbol,Line}, con
 
     # ρ_orig = ρ
 
-    for i in 1:1000
+    for i in 1:10000
         if config.use_multithreading
             results, Ps, objective = solve_subproblems_multithreaded(busses, lines, δs, λ_δs, ρ)
         else

@@ -1,0 +1,6 @@
+file,method,elapsed,objective,has_converged
+./data/ieee118cdf.txt,distributed,50.24605417251587,128380.00179146702,true
+./data/ieee14cdf.txt,distributed,5.573172092437744,9065.062734937906,true
+./data/ieee300cdf.txt,distributed,490.19328594207764,836166.1419402797,true
+./data/ieee30cdf.txt,distributed,20.91224217414856,9919.099733356725,true
+./data/ieee57cdf.txt,distributed,54.50534105300903,43778.10534084109,true

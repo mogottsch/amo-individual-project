@@ -70,7 +70,7 @@ function coroutine(ws::WebSockets.WebSocket, state::State, config::Config, data:
         lock(state.nextIteration) do
             while state.k == localK
                 δs, λ_δs = wait(state.nextIteration)
-                @info log(logger, "Woke up")
+                @debug log(logger, "Woke up")
                 δs = getRelevantδs(δs, data.busses, id)
                 λ_δs = getRelevantλ_δs(λ_δs, id)
             end

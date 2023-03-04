@@ -1,3 +1,5 @@
+using JuMP
+
 include("./common.jl")
 
 function solve_with_lp(busses::Dict{Symbol,Bus}, lines::Dict{Symbol,Line})

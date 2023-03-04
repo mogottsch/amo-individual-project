@@ -28,13 +28,17 @@ function startController(config::Config, state::State, data::Data)
     while true
         clientUpdate = take!(channel)
         clientId = clientUpdate.id
-        debugMessage = localK == 0 ? "Client $clientId registered" : "Client $clientId answered"
-        @info log(logger, debugMessage)
+        if localK == 0
+            nConnected = length(connected)
+            @info log(logger, "Client $clientId registered ($nConnected / $(config.N_CLIENTS))")
+        else
+            @debug log(logger, "Client $clientId answered")
+        end
 
         if localK == 0
             if length(connected) == config.N_CLIENTS
                 @info log(logger, "All clients connected")
-                waitForUserConfirmation(logger)
+                # waitForUserConfirmation(logger)
                 startTime = time()
                 localK = startNextIteration(state, δs, λ_δs, logger)
             end
@@ -49,11 +53,11 @@ function startController(config::Config, state::State, data::Data)
 
 
         if length(clientUpdates) == config.N_CLIENTS
-            @info log(logger, "All clients answered")
+            @debug log(logger, "All clients answered")
 
             δs, residuals, diffs_λ_δs, λ_δs, Ps, sum_objectives = processUpdates(clientUpdates, data, λ_δs, ρ)
 
-            converged = checkConvergence(residuals, diffs_λ_δs, ρ, ϵ, logger)
+            converged = checkConvergence(residuals, diffs_λ_δs, ρ, ϵ, logger, localK)
 
             clientUpdates = ClientUpdate[]
 
@@ -66,6 +70,7 @@ function startController(config::Config, state::State, data::Data)
                 timeElapsedAfterFirstIteration = time() - startTimeAfterFirstIteration
                 @info "Time elapsed: $timeElapsed"
                 @info "Time elapsed after first iteration: $timeElapsedAfterFirstIteration"
+                return timeElapsed, sum_objectives
                 break
             end
 
@@ -98,13 +103,13 @@ function checkConvergence(
     ρ::Float64,
     ϵ::Float64,
     logger::LoggerConfig,
+    k::Int
 )::Bool
     r, s = get_convergence(residuals, diffs_λ_δs, ρ)
     primal_convergence = r < ϵ
     dual_convergence = s < ϵ
 
-    @info log(logger, "Primal convergence: $r")
-    @info log(logger, "Dual convergence: $s")
+    @info log(logger, "k=$k, Primal convergence: $r, Dual convergence: $s")
 
     return primal_convergence && dual_convergence
 end
@@ -142,14 +147,15 @@ function startNextIteration(
         state.k = state.k + 1
     end
 
+    @debug log(logger, "Starting iteration $(state.k)")
     newValues = (δs, λ_δs)
-    @info log(logger, "Notifying clients")
+    @debug log(logger, "Notifying clients")
     nWoken = nothing
     lock(state.nextIteration) do
         nWoken = notify(state.nextIteration, newValues)
     end
 
-    @info log(logger, "Woke up $nWoken clients")
+    @debug log(logger, "Woke up $nWoken clients")
     return state.k
 end
 
