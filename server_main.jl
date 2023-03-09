@@ -10,8 +10,9 @@ function main(args)
         println("Usage: julia server.jl <path>")
         return
     end
-
     startFor(args[1])
 end
+
+ENV["JULIA_DEBUG"] = "Main"
 
 main(ARGS)

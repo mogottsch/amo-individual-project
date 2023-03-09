@@ -45,7 +45,7 @@ function startControlPlane(
             end
 
             if istaskdone(task)
-                @info "Client $id done"
+                # @info "Client $id done"
                 break
             end
         end

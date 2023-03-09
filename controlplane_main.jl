@@ -6,7 +6,7 @@ include("./src/distributed/controlplane.jl")
 
 function main(args)
     if length(args) != 1
-        println("Usage: julia client.jl <id>")
+        println("Usage: julia controlplane_main.jl <path>")
         return
     end
 
@@ -14,7 +14,6 @@ function main(args)
 
 
     r = startControlPlane(args[1])
-    elapsed, objective = r
 end
 
 

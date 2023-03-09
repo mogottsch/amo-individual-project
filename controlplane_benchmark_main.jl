@@ -18,7 +18,7 @@ function main()
         :objective => Float64[],
         :has_converged => Bool[],
     )
-    method = "distributed_latency"
+    method = "distributed"
     has_converged = true # we set no limit on the number of iterations
 
     for ieee_file in ieee_files
@@ -27,7 +27,7 @@ function main()
         push!(results_df, (ieee_file, method, elapsed, objective, has_converged))
     end
 
-    CSV.write("./results/distributed_latency_results.csv", results_df)
+    CSV.write("./results/distributed_results.csv", results_df)
 end
 
 

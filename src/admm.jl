@@ -38,15 +38,21 @@ function solve_with_admm(busses::Dict{Symbol,Bus}, lines::Dict{Symbol,Line}, con
     # ρ_orig = ρ
 
     for i in 1:10000
+
+        # --- ADMM update steps start ---
+        ## update rule for local variables
         if config.use_multithreading
             results, Ps, objective = solve_subproblems_multithreaded(busses, lines, δs, λ_δs, ρ)
         else
             results, Ps, objective = solve_subproblems(busses, lines, δs, λ_δs, ρ)
         end
 
+        ## update rule for global variables
         aggregated_results = aggregate_results(results)
 
+        ## update rule for dual variables
         residuals, diffs_λ_δs, new_λ_δs = update_dual_variables(busses, lines, aggregated_results, results, λ_δs, ρ)
+        # --- ADMM update steps end ---
 
         r, s = get_convergence(residuals, diffs_λ_δs, ρ)
         primal_convergence = r < ϵ

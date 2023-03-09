@@ -38,7 +38,7 @@ function startController(config::Config, state::State, data::Data)
         if localK == 0
             if length(connected) == config.N_CLIENTS
                 @info log(logger, "All clients connected")
-                # waitForUserConfirmation(logger)
+                waitForUserConfirmation(logger)
                 startTime = time()
                 localK = startNextIteration(state, δs, λ_δs, logger)
             end

@@ -2,6 +2,7 @@ import WebSockets
 
 include("logger.jl")
 
+realistic_latency_ms = 28
 function readWs(ws::WebSockets.WebSocket, logger::LoggerConfig)::Tuple{String,Bool}
     data, stillopen = WebSockets.readguarded(ws)
     if !stillopen
@@ -11,9 +12,7 @@ function readWs(ws::WebSockets.WebSocket, logger::LoggerConfig)::Tuple{String,Bo
     return String(data), true
 end
 
-realistic_latency_ms = 28
 function writeWs(ws::WebSockets.WebSocket, data::String, logger::LoggerConfig)::Bool
-    # sleep(realistic_latency_ms / 1000)
     stillopen = WebSockets.writeguarded(ws, data)
     if !stillopen
         @warn log(logger, "Connection closed by peer")
